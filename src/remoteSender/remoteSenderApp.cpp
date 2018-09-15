@@ -16,12 +16,62 @@
 //Ours
 #include "remoteSender.h"
 
+//local functions
+static void print_usage();
 
+
+//Application Entry Point
 int main(int argc, char *argv[])
 {
+	int c;
+    char* hostIP = NULL;
+    while ((c = getopt (argc, argv, "i:h")) != -1)
+    {
+        switch (c)
+        {
+        	 //Get the IP address to use
+            case 'i':
+            	hostIP = static_cast<char*>(calloc(512, sizeof(char)));
+            	if(sscanf(optarg, "%15[^,]", hostIP) <= 0)
+        		{
+        			std::cerr << "Failed to read IP address" << std::endl;
+        			return 0;
+        		}
+                break;
 
+            //Print out the help guide
+            case 'h':
+                print_usage();
+                return 0;
 
-	remoteSender sender();
+            //Handle unknown Arguments
+            case '?':
+                if (optopt == 'c')
+                  std::cerr << "Option -%c requires an argument.\n" << optopt;
+                else if (isprint (optopt))
+                  std::cerr << "Unknown option `-%c'.\n" << optopt;
+                else
+                	std::cerr << "Unknown option character " << optopt;
+                	print_usage();
+                return 1;
+            
+            //Error on Unknown input Argument
+            default:
+                std::cout <<"Error! Unknown argument given";
+                print_usage();
+                return 0;
+        }
+    }
+
+    if (hostIP == NULL)
+    {
+    	hostIP = static_cast<char*>(calloc(512, sizeof(char)));
+    	strcpy(hostIP, "127.0.0.1");
+    }
+
+    std::string hostIPstring;
+    hostIPstring.append(hostIP);
+	remoteSender sender(hostIPstring);
 
 	//Just sleep in main while the remoteSender operates
 	while(1)
@@ -32,3 +82,15 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
+
+static void print_usage(){
+    std::cout <<"\n Usage:\n";
+    std::cout <<"./remoteSender [-OPTION OPTION_VALUE]\n";
+    std::cout <<"\n";
+    std::cout <<"Options:\n";
+    std::cout <<"-i {ip Address} 		Manually set the IP address of the host to connect to. Default: 127.0.0.1 (localhost)\n";
+    std::cout <<"-h {help}                  Print this usage text\n";
+    
+    return;
+}
+

@@ -77,9 +77,9 @@ bool UdpServer::connect(const std::string& address_, int port_, int recvBuffSize
     memset(&this->client, 0, sizeof(this->client));
 
     // Create a udp socket
-    if ((this->sockServer = ::socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+    if ((this->sockServer = ::socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0)) < 0)
     {
-        std::cerr << "error: cannot create socket" << std::endl;
+        std::cerr << "error: cannot create socket: " << strerror(errno) <<  std::endl;
         return false;
     }
     else

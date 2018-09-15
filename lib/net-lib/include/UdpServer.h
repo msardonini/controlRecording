@@ -17,6 +17,7 @@
 #include <iostream>
 #include <functional>
 #include <unistd.h>
+#include <errno.h>
 
 // Network
 #include <arpa/inet.h>

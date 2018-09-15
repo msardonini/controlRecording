@@ -14,16 +14,30 @@
 
  */
 remoteSender::remoteSender(std::string ipAddr)
+	: greenLedStatus(FLASHING),
+	redLedStatus(OFF),
+	remoteState(DISCONNECTED),
+	hostState(DISCONNECTED)
 {
 	//Port to read from the headless machine
-	int port = 200;
+	int portRemote = 200;
+	int portHost = 201;
 
 	this->server = UdpServer();
 
 	//Connect to Any available local IP address and listen on given port 
-	this->server.connect("", port, 256);
+	this->server.connect("", portRemote, 256);
+	this->server.setClientInfo(ipAddr, portHost);
 
-	this->server.setClientInfo(ipAddr, port);
+	//Start the thread that handles our LEDs
+	this->redLedThread = std::thread(&remoteSender::LedControlThread, this, RED);
+	this->greenLedThread = std::thread(&remoteSender::LedControlThread, this, GREEN);
+
+	this->readThread_h = std::thread(&remoteSender::readThread, this);
+	this->writeThread_h = std::thread(&remoteSender::writeThread, this);
+	
+	//Button Thread
+	this->buttonThread_h = std::thread(&remoteSender::buttonThread, this);
 
 }
 
@@ -36,33 +50,66 @@ remoteSender::~remoteSender()
 
 }
 
-
-/** function to run the program
+/** Function that manages the UDP responses from the host and updates the LED's accordingly
 
  */
-int remoteSender::run()
+int remoteSender::readThread()
 {
 
+	while(this->isRunning)
+	{
+		//Read the data in from the UDP interface
+		server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
+		
+		this->onMessageReceived();
 
+		//Check if we have received the heartbeat status message in a reasonable amount of time
+		if (this->getTimeUsec() - this->lastTimestampReceived_us > 1e6)
+		{
+			this->remoteState = DISCONNECTED;
+		}
+		else if (this->remoteState == DISCONNECTED)
+		{
+			this->remoteState = STANDBY;
+		}
+
+		// Update the LED status
+		switch(this->remoteState)
+		{
+			case DISCONNECTED:
+				this->setLedFlashing(GREEN);
+				this->setLedOff(RED);
+				break;
+			case STANDBY:
+				this->setLedOn(GREEN);
+				this->setLedOff(RED);
+				break;
+			case RECORDING:
+				this->setLedOff(GREEN);
+				this->setLedOn(RED);
+				break;
+		}
+		//Run at 10Hz
+		usleep(100000);
+	}
+	return 0;
+}
+
+/** Function that manages the UDP commands to the host
+
+ */
+int remoteSender::writeThread()
+{	
 	//thread whih keeps the heartbeat sending
 	while(this->isRunning)
 	{
-		//Check if we have received the heartbeat status message in a reasonable amount of time
-		if (this->timestamp_us - this->lastTimestampReceived_us > 1e6)
-		{
-			this->setLedFlashing();
-		}
-		else
-		{
-			this->setLedSolid();
-		}
-
 		this->createSendMessage();
 		this->server.send(reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
 
+		//Send a command message at 10Hz
 		usleep(100000);
 	}
-
+	return 0;
 }
 
 /** Fill Message to send
@@ -75,7 +122,10 @@ int remoteSender::createSendMessage()
 	this->sndMessage.magicHeader2 = MAGIC_H2;
 	this->sndMessage.isCommandMsg = 1u;
 	this->sndMessage.isStatusMsg = 0u;
-	this->sndMessage.mode = this->mode;
+	if (this->hostState == RECORDING)
+		this->sndMessage.mode = 1u;
+	else
+		this->sndMessage.mode = 0u;
 	this->sndMessage.magicFooter1 = MAGIC_F1;
 	this->sndMessage.magicFooter2 = MAGIC_F2;
 
@@ -105,34 +155,124 @@ int remoteSender::onMessageReceived()
 	
 		if(this->lastModeReceived == MODE_RECORDING)
 		{
-			this->setLedRecording();
+			this->remoteState = RECORDING;
 		}
 		else if(this->lastModeReceived == MODE_STANDBY)
 		{
-			this->setLedRecordingOff();
+			this->remoteState = STANDBY;
 		}
 	}
 	return 0;
 }
 
-//TODO Make the fuctions interface with actual LEDS on a pi
-
-int remoteSender::setLedFlashing()
+int remoteSender::buttonThread()
 {
+
+	int redButtonState = 0;
+	int previousRedButtonState = 0;
+
+
+	int greenButtonState = 0;
+	int previousGreenButtonState = 0; 
+
+	while(this->isRunning)
+	{
+		previousGreenButtonState = greenButtonState; 
+		//TODO the state of the green button
+
+		// Detect a green button push
+		if (greenButtonState > previousGreenButtonState)
+		{
+			this->hostState = STANDBY;
+		}
+
+		previousRedButtonState = redButtonState; 
+		//TODO the state of the red button
+		
+		// Detect a red button push
+		if (redButtonState > previousGreenButtonState)
+		{
+			this->hostState = RECORDING;
+		}
+
+		//Run at 100hz to catch quick button pushes
+		usleep(10000);
+	}
 	return 0;
 }
 
-int remoteSender::setLedSolid()
+
+int remoteSender::LedControlThread(enum LED_COLORS_t color)
 {
+	enum LED_STATUS_t status;
+	bool isLedOn = false;
+
+	while(this->isRunning)
+	{
+		if (color == RED)
+			enum LED_STATUS_t status = this->redLedStatus;
+		else if (color == GREEN)
+			enum LED_STATUS_t status = this->greenLedStatus;
+
+		switch (status)
+		{
+			case ON:
+				//TODO set LED based on status
+				isLedOn = true;
+				break;
+
+			case OFF:
+				//TODO set LED based on status
+				isLedOn = false;
+				break;
+
+			case FLASHING:
+				//TODO set LED based on status
+				isLedOn = (isLedOn) ? false : true;
+				break;
+		}
+		usleep(500000);
+	}
 	return 0;
 }
 
-int remoteSender::setLedRecording()
+//Sets the LED to flashing
+int remoteSender::setLedFlashing(enum LED_COLORS_t color)
 {
+	if (color == RED)
+		this->redLedStatus = FLASHING;
+	else if (color == GREEN)
+		this->greenLedStatus = FLASHING;
+
 	return 0;
 }
 
-int remoteSender::setLedRecordingOff()
+//Turns on the LED
+int remoteSender::setLedOn(enum LED_COLORS_t color)
 {
+	if (color == RED)
+		this->redLedStatus = ON;
+	else if (color == GREEN)
+		this->greenLedStatus = ON;
+
 	return 0;
+}
+
+//Turns off the LED
+int remoteSender::setLedOff(enum LED_COLORS_t color)
+{
+	if (color == RED)
+		this->redLedStatus = OFF;
+	else if (color == GREEN)
+		this->greenLedStatus = OFF;
+
+	return 0;
+}
+
+
+uint64_t remoteSender::getTimeUsec()
+{
+	struct timespec tv;
+	clock_gettime(CLOCK_MONOTONIC, &tv);
+	return tv.tv_sec*(uint64_t)1E6 + tv.tv_nsec/(uint64_t)1E3;
 }
