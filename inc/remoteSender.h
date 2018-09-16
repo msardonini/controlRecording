@@ -13,9 +13,17 @@
 #include <string.h>
 #include <thread>
 
+//Packages
+#include <wiringPi.h>
+
 //Ours
 #include "UdpServer.h"
 #include "messageStructure.h"
+
+#define GPIO_RED_LED 4
+#define GPIO_RED_BUTTON 5
+#define GPIO_GREEN_LED 0
+#define GPIO_GREEN_BUTTON 2
 
 enum REMOTE_STATES_t
 {

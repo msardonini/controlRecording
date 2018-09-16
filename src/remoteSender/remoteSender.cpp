@@ -17,7 +17,8 @@ remoteSender::remoteSender(std::string ipAddr)
 	: greenLedStatus(FLASHING),
 	redLedStatus(OFF),
 	remoteState(DISCONNECTED),
-	hostState(DISCONNECTED)
+	hostState(DISCONNECTED),
+	isRunning(true)
 {
 	//Port to read from the headless machine
 	int portRemote = 200;
@@ -39,6 +40,16 @@ remoteSender::remoteSender(std::string ipAddr)
 	//Button Thread
 	this->buttonThread_h = std::thread(&remoteSender::buttonThread, this);
 
+	//Initialize the GPIO pints for LEDs and Butons
+	wiringPiSetup();
+
+	//Inintialize the GREEN LED
+	pinMode(GPIO_GREEN_LED, OUTPUT);
+	pinMode(GPIO_GREEN_BUTTON, INPUT);
+  
+	//Inintialize the GREEN LED
+	pinMode(GPIO_RED_LED, OUTPUT);
+	pinMode(GPIO_RED_BUTTON, INPUT);
 }
 
 /** Default Destructor
@@ -99,7 +110,7 @@ int remoteSender::readThread()
 
  */
 int remoteSender::writeThread()
-{	
+{
 	//thread whih keeps the heartbeat sending
 	while(this->isRunning)
 	{
@@ -178,7 +189,7 @@ int remoteSender::buttonThread()
 	while(this->isRunning)
 	{
 		previousGreenButtonState = greenButtonState; 
-		//TODO the state of the green button
+		digitalRead(GPIO_GREEN_BUTTON);
 
 		// Detect a green button push
 		if (greenButtonState > previousGreenButtonState)
@@ -187,10 +198,10 @@ int remoteSender::buttonThread()
 		}
 
 		previousRedButtonState = redButtonState; 
-		//TODO the state of the red button
+		digitalRead(GPIO_RED_BUTTON);
 		
 		// Detect a red button push
-		if (redButtonState > previousGreenButtonState)
+		if (redButtonState > previousRedButtonState)
 		{
 			this->hostState = RECORDING;
 		}
@@ -210,25 +221,45 @@ int remoteSender::LedControlThread(enum LED_COLORS_t color)
 	while(this->isRunning)
 	{
 		if (color == RED)
-			enum LED_STATUS_t status = this->redLedStatus;
+			status = this->redLedStatus;
 		else if (color == GREEN)
-			enum LED_STATUS_t status = this->greenLedStatus;
+			status = this->greenLedStatus;
 
 		switch (status)
 		{
 			case ON:
-				//TODO set LED based on status
+				if (color == RED)
+					digitalWrite(GPIO_RED_LED, 1);
+				else if(color == GREEN)
+					digitalWrite(GPIO_GREEN_LED, 1);
 				isLedOn = true;
 				break;
 
 			case OFF:
-				//TODO set LED based on status
+				if (color == RED)
+					digitalWrite(GPIO_RED_LED, 0);
+				else if(color == GREEN)
+					digitalWrite(GPIO_GREEN_LED, 0);
 				isLedOn = false;
 				break;
 
 			case FLASHING:
-				//TODO set LED based on status
 				isLedOn = (isLedOn) ? false : true;
+				if(isLedOn)
+				{
+					if (color == RED)
+						digitalWrite(GPIO_RED_LED, 0);
+					else if(color == GREEN)
+						digitalWrite(GPIO_GREEN_LED, 0);
+
+				}
+				else
+				{
+					if (color == RED)
+						digitalWrite(GPIO_RED_LED, 1);
+					else if(color == GREEN)
+						digitalWrite(GPIO_GREEN_LED, 1);					
+				}
 				break;
 		}
 		usleep(500000);

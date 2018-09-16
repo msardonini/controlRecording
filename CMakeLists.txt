@@ -37,4 +37,5 @@ add_executable(remoteSender
 		src/remoteSender/remoteSender.cpp)
 
 target_link_libraries(remoteSender
-		NetLib)
+		NetLib
+		wiringPi)
