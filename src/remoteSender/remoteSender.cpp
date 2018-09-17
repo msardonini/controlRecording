@@ -67,15 +67,17 @@ remoteSender::~remoteSender()
 int remoteSender::readThread()
 {
 
+	uint64_t previousTimeStamp_us;
 	while(this->isRunning)
 	{
 		//Read the data in from the UDP interface
 		server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
-		
+
+		previousTimeStamp_us = this->lastTimestampReceived_us;
 		this->onMessageReceived();
 
 		//Check if we have received the heartbeat status message in a reasonable amount of time
-		if (this->getTimeUsec() - this->lastTimestampReceived_us > 1e6)
+		if (previousTimeStamp_us - this->lastTimestampReceived_us > 1e6)
 		{
 			this->remoteState = DISCONNECTED;
 		}
