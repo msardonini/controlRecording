@@ -17,10 +17,6 @@
 #include "UdpServer.h"
 #include "messageStructure.h"
 
-#define GPIO_RED_LED 4
-#define GPIO_RED_BUTTON 5
-#define GPIO_GREEN_LED 0
-#define GPIO_GREEN_BUTTON 2
 
 enum HOST_STATES_t
 {
@@ -29,14 +25,14 @@ enum HOST_STATES_t
 };
 
 
-class clientReceiver
+class hostReceiver
 {
 public:
 	
-	clientReceiver(std::string ipAddrHost);
+	hostReceiver(std::string ipAddrHost);
 
 
-	~clientReceiver();
+	~hostReceiver();
 
 	//Threads that monintor reads and writes from network interfaces
 	int readThread();
@@ -49,6 +45,10 @@ public:
 
 	int onMessageReceived();
 
+
+	int stopRecording();
+	int startRecording();
+
 	// Get the current time in microseconds
 	uint64_t getTimeUsec();
 
@@ -58,10 +58,10 @@ private:
 	bool isRunning;
 
 	//Enum to describe what state the program is reading from the host
-	enum REMOTE_STATES_t remoteState;
+	enum HOST_STATES_t commandedState;
 
 	//Enum to describe what state the program is commanding to the Host
-	enum REMOTE_STATES_t hostState;
+	enum HOST_STATES_t hostState;
 
 	//threads to handle the incoming and outgoing of messages
 	std::thread readThread_h;

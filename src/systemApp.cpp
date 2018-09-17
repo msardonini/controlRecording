@@ -14,7 +14,11 @@
 //Packages
 
 //Ours
-#include "remoteSender.h"
+#ifdef REMOTE_SENDER
+    #include "remoteSender.h"
+#elif HOST_RECEIVER
+    #include "hostReceiver.h"
+#endif
 
 //local functions
 static void print_usage();
@@ -23,20 +27,20 @@ static void print_usage();
 //Application Entry Point
 int main(int argc, char *argv[])
 {
-	int c;
+    int c;
     char* hostIP = NULL;
     while ((c = getopt (argc, argv, "i:h")) != -1)
     {
         switch (c)
         {
-        	 //Get the IP address to use
+             //Get the IP address to use
             case 'i':
-            	hostIP = static_cast<char*>(calloc(512, sizeof(char)));
-            	if(sscanf(optarg, "%15[^,]", hostIP) <= 0)
-        		{
-        			std::cerr << "Failed to read IP address" << std::endl;
-        			return 0;
-        		}
+                hostIP = static_cast<char*>(calloc(512, sizeof(char)));
+                if(sscanf(optarg, "%15[^,]", hostIP) <= 0)
+                {
+                    std::cerr << "Failed to read IP address" << std::endl;
+                    return 0;
+                }
                 break;
 
             //Print out the help guide
@@ -51,8 +55,8 @@ int main(int argc, char *argv[])
                 else if (isprint (optopt))
                   std::cerr << "Unknown option `-%c'.\n" << optopt;
                 else
-                	std::cerr << "Unknown option character " << optopt;
-                	print_usage();
+                    std::cerr << "Unknown option character " << optopt;
+                    print_usage();
                 return 1;
             
             //Error on Unknown input Argument
@@ -65,19 +69,18 @@ int main(int argc, char *argv[])
 
     if (hostIP == NULL)
     {
-    	hostIP = static_cast<char*>(calloc(512, sizeof(char)));
-    	strcpy(hostIP, "127.0.0.1");
+        hostIP = static_cast<char*>(calloc(512, sizeof(char)));
+        strcpy(hostIP, "127.0.0.1");
     }
 
 #ifdef REMOTE_SENDER
     std::string hostIPstring;
     hostIPstring.append(hostIP);
 	remoteSender sender(hostIPstring);
-#else
+#elif HOST_RECEIVER
     std::string remoteIPstring;
     remoteIPstring.append(hostIP);
     hostReceiver receiver(remoteIPstring);
-
 #endif
 
 	//Just sleep in main while the remoteSender operates

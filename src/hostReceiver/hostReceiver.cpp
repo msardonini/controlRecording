@@ -1,23 +1,21 @@
 /**
- * @file remoteSender.cpp
+ * @file hostReceiver.cpp
  * @brief Control the status of a video recorder on a headless machine using a remote raspberry pi
  *
  * @author Mike Sardonini
- * @date 09/10/2018
+ * @date 09/16/2018
  */
 
-#include "remoteSender.h" 
+#include "hostReceiver.h" 
 
 
 
 /** Default Constructor
 
  */
-remoteSender::remoteSender(std::string ipAddr)
-	: greenLedStatus(FLASHING),
-	redLedStatus(OFF),
-	remoteState(DISCONNECTED),
-	hostState(DISCONNECTED),
+hostReceiver::hostReceiver(std::string ipAddr)
+	: commandedState(STANDBY),
+	hostState(STANDBY),
 	isRunning(true)
 {
 	//Port to read from the headless machine
@@ -30,15 +28,15 @@ remoteSender::remoteSender(std::string ipAddr)
 	this->server.connect("", portHost, 256);
 	this->server.setClientInfo(ipAddr, portRemote);
 
-	this->readThread_h = std::thread(&remoteSender::readThread, this);
-	this->writeThread_h = std::thread(&remoteSender::writeThread, this);
+	this->readThread_h = std::thread(&hostReceiver::readThread, this);
+	this->writeThread_h = std::thread(&hostReceiver::writeThread, this);
 	
 }
 
 /** Default Destructor
 
  */
-remoteSender::~remoteSender()
+hostReceiver::~hostReceiver()
 {
 
 
@@ -47,7 +45,7 @@ remoteSender::~remoteSender()
 /** Function that manages the UDP responses from the host and updates the LED's accordingly
 
  */
-int remoteSender::readThread()
+int hostReceiver::readThread()
 {
 
 	while(this->isRunning)
@@ -57,14 +55,14 @@ int remoteSender::readThread()
 		
 		this->onMessageReceived();
 
-		//Check if we have received the heartbeat status message in a reasonable amount of time
-		if (this->getTimeUsec() - this->lastTimestampReceived_us > 1e6)
+		//Trigger to start recording
+		if(this->commandedState == RECORDING && this->hostState == STANDBY)
 		{
-			this->remoteState = DISCONNECTED;
+			this->startRecording();
 		}
-		else if (this->remoteState == DISCONNECTED)
+		else if (this->commandedState == STANDBY && this->hostState == RECORDING)
 		{
-			this->remoteState = STANDBY;
+			this->stopRecording();
 		}
 
 		//Run at 10Hz
@@ -76,7 +74,7 @@ int remoteSender::readThread()
 /** Function that manages the UDP commands to the host
 
  */
-int remoteSender::writeThread()
+int hostReceiver::writeThread()
 {
 	//thread whih keeps the heartbeat sending
 	while(this->isRunning)
@@ -93,7 +91,7 @@ int remoteSender::writeThread()
 /** Fill Message to send
 
  */
-int remoteSender::createSendMessage()
+int hostReceiver::createSendMessage()
 {
 	//Manually fill out the contents of the message to sent
 	this->sndMessage.magicHeader1 = MAGIC_H1;
@@ -102,7 +100,7 @@ int remoteSender::createSendMessage()
 	this->sndMessage.isStatusMsg = 1u;
 	if (this->hostState == RECORDING)
 		this->sndMessage.mode = 1u;
-	else
+	else if (this->hostState == STANDBY)
 		this->sndMessage.mode = 0u;
 	this->sndMessage.magicFooter1 = MAGIC_F1;
 	this->sndMessage.magicFooter2 = MAGIC_F2;
@@ -114,7 +112,7 @@ int remoteSender::createSendMessage()
 
 
 //TODO, set the udpserver such that this function is called every time a UDP message is received
-int remoteSender::onMessageReceived()
+int hostReceiver::onMessageReceived()
 {
 	//Copy the buffer into the messge predefined message
 	memcpy(&this->rcvMessage, this->rcvbuf, sizeof(this->rcvMessage));
@@ -133,55 +131,32 @@ int remoteSender::onMessageReceived()
 	
 		if(this->lastModeReceived == MODE_RECORDING)
 		{
-			this->remoteState = RECORDING;
+			this->commandedState = RECORDING;
 		}
 		else if(this->lastModeReceived == MODE_STANDBY)
 		{
-			this->remoteState = STANDBY;
+			this->commandedState = STANDBY;
 		}
 	}
 	return 0;
 }
 
-
-int remoteSender::LedControlThread(enum LED_COLORS_t color)
+int hostReceiver::startRecording()
 {
-	enum LED_STATUS_t status;
-	bool isLedOn = false;
+	system("/home/msardonini/Videos/record_on_boot.sh");
+	this->hostState = RECORDING;
+}
 
-	while(this->isRunning)
-	{
-		if (color == RED)
-			status = this->redLedStatus;
-		else if (color == GREEN)
-			status = this->greenLedStatus;
 
-		switch (status)
-		{
-			case ON:
-				if (color == RED)
-					digitalWrite(GPIO_RED_LED, 1);
-				else if(color == GREEN)
-					digitalWrite(GPIO_GREEN_LED, 1);
-				isLedOn = true;
-				break;
-
-			case OFF:
-				if (color == RED)
-					digitalWrite(GPIO_RED_LED, 0);
-				else if(color == GREEN)
-					digitalWrite(GPIO_GREEN_LED, 0);
-				isLedOn = false;
-				break;
-		}
-		usleep(500000);
-	}
-	return 0;
+int hostReceiver::stopRecording()
+{
+	system("/home/msardonini/Videos/stopProgram.sh");
+	this->hostState = STANDBY;
 }
 
 
 
-uint64_t remoteSender::getTimeUsec()
+uint64_t hostReceiver::getTimeUsec()
 {
 	struct timespec tv;
 	clock_gettime(CLOCK_MONOTONIC, &tv);

@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.5.0 FATAL_ERROR)
 project(remoteSender)
 
 option(GLOBAL_FOR_RPI "GLOBAL_FOR_RPI" OFF)
+option(FOR_REMOTE "FOR_REMOTE" OFF)
 
 
 # Define the compiler
@@ -31,11 +32,23 @@ include_directories(lib/net-lib/include)
 link_directories(lib/net-lib/build/common)
 
 
+if(FOR_REMOTE)
+	add_definitions(-DREMOTE_SENDER)
+	add_executable(remoteSender
+			src/systemApp.cpp
+			src/remoteSender/remoteSender.cpp)
 
-add_executable(remoteSender
-		src/remoteSender/remoteSenderApp.cpp
-		src/remoteSender/remoteSender.cpp)
+	target_link_libraries(remoteSender
+			NetLib
+			wiringPi)
+else()
+	add_definitions(-DHOST_RECEIVER)
+	add_executable(hostReceiver
+			src/systemApp.cpp
+			src/hostReceiver/hostReceiver.cpp)
 
-target_link_libraries(remoteSender
-		NetLib
-		wiringPi)
+	target_link_libraries(hostReceiver
+			NetLib)
+
+
+endif()
