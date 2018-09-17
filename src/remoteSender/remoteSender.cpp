@@ -195,7 +195,7 @@ int remoteSender::buttonThread()
 		greenButtonState = digitalRead(GPIO_GREEN_BUTTON);
 
 		// Detect a green button push
-		if (greenButtonState > previousGreenButtonState)
+		if (greenButtonState != previousGreenButtonState)
 		{
 			// std::cout << "green push detected \n";
 			this->buttonState = STANDBY;
@@ -205,7 +205,7 @@ int remoteSender::buttonThread()
 		redButtonState = digitalRead(GPIO_RED_BUTTON);
 		
 		// Detect a red button push
-		if (redButtonState > previousRedButtonState)
+		if (redButtonState != previousRedButtonState)
 		{
 			// std::cout << "red push detected \n";
 			this->buttonState = RECORDING;
