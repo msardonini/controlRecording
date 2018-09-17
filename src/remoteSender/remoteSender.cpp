@@ -16,8 +16,8 @@
 remoteSender::remoteSender(std::string ipAddr)
 	: greenLedStatus(FLASHING),
 	redLedStatus(OFF),
-	remoteState(DISCONNECTED),
 	hostState(DISCONNECTED),
+	buttonState(DISCONNECTED),
 	isRunning(true)
 {
 	//Port to read from the headless machine
@@ -71,23 +71,24 @@ int remoteSender::readThread()
 	while(this->isRunning)
 	{
 		//Read the data in from the UDP interface
-		server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
-
-		previousTimeStamp_us = this->lastTimestampReceived_us;
-		this->onMessageReceived();
+		if(server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf)) > 0)
+		{
+			previousTimeStamp_us = this->getTimeUsec();
+			this->onMessageReceived();
+		}
 
 		//Check if we have received the heartbeat status message in a reasonable amount of time
-		if (previousTimeStamp_us - this->lastTimestampReceived_us > 1e6)
+		if (abs(this->getTimeUsec() - previousTimeStamp_us) > 1e6)
 		{
-			this->remoteState = DISCONNECTED;
+			this->hostState = DISCONNECTED;
 		}
-		else if (this->remoteState == DISCONNECTED)
+		else if (this->hostState == DISCONNECTED)
 		{
-			this->remoteState = STANDBY;
+			this->hostState = STANDBY;
 		}
-
+		
 		// Update the LED status
-		switch(this->remoteState)
+		switch(this->hostState)
 		{
 			case DISCONNECTED:
 				this->setLedFlashing(GREEN);
@@ -135,10 +136,10 @@ int remoteSender::createSendMessage()
 	this->sndMessage.magicHeader2 = MAGIC_H2;
 	this->sndMessage.isCommandMsg = 1u;
 	this->sndMessage.isStatusMsg = 0u;
-	if (this->hostState == RECORDING)
-		this->sndMessage.mode = 1u;
+	if (this->buttonState == RECORDING)
+		this->sndMessage.mode = MODE_RECORDING;
 	else
-		this->sndMessage.mode = 0u;
+		this->sndMessage.mode = MODE_STANDBY;
 	this->sndMessage.magicFooter1 = MAGIC_F1;
 	this->sndMessage.magicFooter2 = MAGIC_F2;
 
@@ -168,11 +169,11 @@ int remoteSender::onMessageReceived()
 	
 		if(this->lastModeReceived == MODE_RECORDING)
 		{
-			this->remoteState = RECORDING;
+			this->hostState = RECORDING;
 		}
 		else if(this->lastModeReceived == MODE_STANDBY)
 		{
-			this->remoteState = STANDBY;
+			this->hostState = STANDBY;
 		}
 	}
 	return 0;
@@ -191,21 +192,23 @@ int remoteSender::buttonThread()
 	while(this->isRunning)
 	{
 		previousGreenButtonState = greenButtonState; 
-		digitalRead(GPIO_GREEN_BUTTON);
+		greenButtonState = digitalRead(GPIO_GREEN_BUTTON);
 
 		// Detect a green button push
 		if (greenButtonState > previousGreenButtonState)
 		{
-			this->hostState = STANDBY;
+			// std::cout << "green push detected \n";
+			this->buttonState = STANDBY;
 		}
 
 		previousRedButtonState = redButtonState; 
-		digitalRead(GPIO_RED_BUTTON);
+		redButtonState = digitalRead(GPIO_RED_BUTTON);
 		
 		// Detect a red button push
 		if (redButtonState > previousRedButtonState)
 		{
-			this->hostState = RECORDING;
+			// std::cout << "red push detected \n";
+			this->buttonState = RECORDING;
 		}
 
 		//Run at 100hz to catch quick button pushes

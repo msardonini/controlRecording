@@ -81,10 +81,10 @@ private:
 	bool isRunning;
 
 	//Enum to describe what state the program is reading from the host
-	enum REMOTE_STATES_t remoteState;
+	enum REMOTE_STATES_t hostState;
 
 	//Enum to describe what state the program is commanding to the Host
-	enum REMOTE_STATES_t hostState;
+	enum REMOTE_STATES_t buttonState;
 
 	//threads to handle the incoming and outgoing of messages
 	std::thread readThread_h;
