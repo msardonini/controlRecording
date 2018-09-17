@@ -51,20 +51,23 @@ int hostReceiver::readThread()
 	while(this->isRunning)
 	{
 		//Read the data in from the UDP interface
-		server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
-		
-		this->onMessageReceived();
 
-		//Trigger to start recording
-		if(this->commandedState == RECORDING && this->hostState == STANDBY)
+		if (server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf)) > 0)
 		{
-			this->startRecording();
-		}
-		else if (this->commandedState == STANDBY && this->hostState == RECORDING)
-		{
-			this->stopRecording();
-		}
+			this->onMessageReceived();
 
+			//Trigger to start recording
+			if(this->commandedState == RECORDING && this->hostState == STANDBY)
+			{
+				std::cout<<"Start recording\n";
+				this->startRecording();
+			}
+			else if (this->commandedState == STANDBY && this->hostState == RECORDING)
+			{
+				std::cout<<"Stop recording\n";
+				this->stopRecording();
+			}
+		}
 		//Run at 10Hz
 		usleep(100000);
 	}
@@ -99,9 +102,9 @@ int hostReceiver::createSendMessage()
 	this->sndMessage.isCommandMsg = 0u;
 	this->sndMessage.isStatusMsg = 1u;
 	if (this->hostState == RECORDING)
-		this->sndMessage.mode = 1u;
+		this->sndMessage.mode = MODE_RECORDING;
 	else if (this->hostState == STANDBY)
-		this->sndMessage.mode = 0u;
+		this->sndMessage.mode = MODE_STANDBY;
 	this->sndMessage.magicFooter1 = MAGIC_F1;
 	this->sndMessage.magicFooter2 = MAGIC_F2;
 
@@ -143,14 +146,14 @@ int hostReceiver::onMessageReceived()
 
 int hostReceiver::startRecording()
 {
-	system("/home/msardonini/Videos/record_on_boot.sh");
+	system("/home/msardonini/Videos/record_on_boot.sh &");
 	this->hostState = RECORDING;
 }
 
 
 int hostReceiver::stopRecording()
 {
-	system("/home/msardonini/Videos/stopProgram.sh");
+	system("/home/msardonini/Videos/stopProgram.sh &");
 	this->hostState = STANDBY;
 }
 

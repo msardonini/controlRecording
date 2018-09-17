@@ -1,0 +1,11 @@
+[Unit]
+Description=Starts Recording Programs
+Requires=systemd-modules-load.service
+
+[Service]
+User=root
+PIDFile=/var/run/hostReceiver.pid
+ExecStart=/home/msardonini/git/controlRecording/build/hostReceiver -i 10.10.10.215
+
+[Install]
+WantedBy=multi-user.target

@@ -1,8 +1,8 @@
 #!/bin/sh
 
 
-cp remoteSender.service /lib/systemd/system/
+sudo cp remoteSender.service /lib/systemd/system/
 
-systemctl daemon-reload
-systemctl enable remoteSender
+sudo systemctl daemon-reload
+sudo systemctl enable remoteSender
 
