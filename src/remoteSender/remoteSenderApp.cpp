@@ -69,9 +69,16 @@ int main(int argc, char *argv[])
     	strcpy(hostIP, "127.0.0.1");
     }
 
+#ifdef REMOTE_SENDER
     std::string hostIPstring;
     hostIPstring.append(hostIP);
 	remoteSender sender(hostIPstring);
+#else
+    std::string remoteIPstring;
+    remoteIPstring.append(hostIP);
+    hostReceiver receiver(remoteIPstring);
+
+#endif
 
 	//Just sleep in main while the remoteSender operates
 	while(1)
