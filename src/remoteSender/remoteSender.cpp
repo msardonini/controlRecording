@@ -24,9 +24,9 @@ remoteSender::remoteSender()
 {
 	printf("Bluetooth!\n"); 
 	struct termios  config;
-
+	sleep(10);
 	const char *device = "/dev/rfcomm0";
-	this->fd = open(device, (O_RDWR | O_NOCTTY | O_NDELAY) & ~(O_NONBLOCK));
+	this->fd = open(device, (O_RDWR | O_NOCTTY | O_NDELAY | O_NONBLOCK));
 	if(this->fd == -1) {
 		printf( "failed to open port\n" );
 		return;
@@ -49,7 +49,7 @@ remoteSender::remoteSender()
 	config.c_cflag &= ~(CSIZE | PARENB);
 	config.c_cflag |= CS8;
 	config.c_cc[VMIN]  = 10; //Miniumum size of 10 bytes to return from read
-	config.c_cc[VTIME] = 0; //return from read after 100 microseconds
+	config.c_cc[VTIME] = 100; //return from read after 100 microseconds
 
 	//Set the read and write speeds
 	if(cfsetispeed(&config, B115200) < 0 || cfsetospeed(&config, B115200) < 0) 
@@ -62,8 +62,28 @@ remoteSender::remoteSender()
 	{
 		printf("Error setting termios attributes\n");
 	}
-	this->readThread_h = std::thread(&hostReceiver::readThread, this);
-	this->writeThread_h = std::thread(&hostReceiver::writeThread, this);	
+
+	//Start the thread that handles our LEDs
+	this->redLedThread = std::thread(&remoteSender::LedControlThread, this, RED);
+	this->greenLedThread = std::thread(&remoteSender::LedControlThread, this, GREEN);
+
+	this->readThread_h = std::thread(&remoteSender::readThread, this);
+	this->writeThread_h = std::thread(&remoteSender::writeThread, this);
+	
+	//Button Thread
+	this->buttonThread_h = std::thread(&remoteSender::buttonThread, this);
+
+	//Initialize the GPIO pints for LEDs and Butons
+	wiringPiSetup();
+
+	//Inintialize the GREEN LED
+	pinMode(GPIO_GREEN_LED, OUTPUT);
+	pinMode(GPIO_GREEN_BUTTON, INPUT);
+  
+	//Inintialize the GREEN LED
+	pinMode(GPIO_RED_LED, OUTPUT);
+	pinMode(GPIO_RED_BUTTON, INPUT);
+
 }
 
 /** UDP communication interface Constructor
@@ -74,7 +94,9 @@ remoteSender::remoteSender(std::string ipAddr)
 	redLedStatus(OFF),
 	hostState(DISCONNECTED),
 	buttonState(DISCONNECTED),
-	isRunning(true)
+	isRunning(true),
+	useBluetooth(true),
+	useUDP(false)
 {
 	//Port to read from the headless machine
 	int portRemote = 200;
@@ -191,10 +213,12 @@ int remoteSender::writeThread()
 		this->createSendMessage();
 
 		if(this->useBluetooth)
-			write(this->fd, reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
+		{
+			ssize_t ret = write(this->fd, reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
+		
+		}
 		else if(this->useUDP)
 			this->server.send(reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
-
 
 		//Send a command message at 10Hz
 		usleep(100000);
@@ -257,6 +281,7 @@ int remoteSender::onMessageReceived()
 
 int remoteSender::buttonThread()
 {
+	bool firstIterationButton = true;
 
 	int redButtonState = 0;
 	int previousRedButtonState = 0;
@@ -267,7 +292,10 @@ int remoteSender::buttonThread()
 
 	while(this->isRunning)
 	{
-		previousGreenButtonState = greenButtonState; 
+		if(firstIterationButton)
+			previousGreenButtonState = digitalRead(GPIO_GREEN_BUTTON); 
+		else
+			previousGreenButtonState = greenButtonState;
 		greenButtonState = digitalRead(GPIO_GREEN_BUTTON);
 
 		// Detect a green button push
@@ -277,13 +305,20 @@ int remoteSender::buttonThread()
 			this->buttonState = STANDBY;
 		}
 
-		previousRedButtonState = redButtonState; 
+		if(firstIterationButton)
+		{			
+			previousRedButtonState = digitalRead(GPIO_RED_BUTTON);
+			firstIterationButton = false;
+		}
+		else
+			previousRedButtonState = redButtonState; 
+
 		redButtonState = digitalRead(GPIO_RED_BUTTON);
 		
 		// Detect a red button push
 		if (redButtonState != previousRedButtonState)
 		{
-			// std::cout << "red push detected \n";
+			std::cout << "red push detected \n";
 			this->buttonState = RECORDING;
 		}
 
