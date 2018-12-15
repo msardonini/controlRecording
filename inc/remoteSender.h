@@ -49,11 +49,17 @@ enum LED_STATUS_t
 class remoteSender
 {
 public:
-	
+
+	//bluetooth interface constructor
+	remoteSender();
+
+	//UDP interface constructor
 	remoteSender(std::string ipAddrHost);
 
 
 	~remoteSender();
+
+	ssize_t receiveData();
 
 	//Threads that monintor reads and writes from network interfaces
 	int readThread();

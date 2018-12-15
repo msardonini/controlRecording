@@ -24,7 +24,13 @@ hostReceiver::hostReceiver()
 	struct termios  config;
 
 	const char *device = "/dev/rfcomm0";
-	this->fd = open(device, (O_RDWR | O_NOCTTY | O_NDELAY) & ~(O_NONBLOCK));
+
+   struct stat buf;
+    while (stat(device, &buf))
+    	sleep(1);
+
+
+	this->fd = open(device, (O_RDWR | O_NOCTTY | O_NDELAY | O_NONBLOCK));
 	if(this->fd == -1) {
 		printf( "failed to open port\n" );
 		return;
@@ -47,7 +53,7 @@ hostReceiver::hostReceiver()
 	config.c_cflag &= ~(CSIZE | PARENB);
 	config.c_cflag |= CS8;
 	config.c_cc[VMIN]  = 10; //Miniumum size of 10 bytes to return from read
-	config.c_cc[VTIME] = 0; //return from read after 100 microseconds
+	config.c_cc[VTIME] = 100; //return from read after 100 microseconds
 
 	//Set the read and write speeds
 	if(cfsetispeed(&config, B115200) < 0 || cfsetospeed(&config, B115200) < 0) 
@@ -128,7 +134,8 @@ int hostReceiver::readThread()
 	{
 		//Read the data in from the comminication interface
 
-		if (this->receiveData())
+		ssize_t ret = this->receiveData();
+		if (ret)
 		{
 			this->onMessageReceived();
 

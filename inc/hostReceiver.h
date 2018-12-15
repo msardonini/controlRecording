@@ -14,6 +14,7 @@
 #include <thread>
 #include <memory>
 #include <termios.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 
