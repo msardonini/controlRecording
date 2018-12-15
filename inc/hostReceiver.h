@@ -12,6 +12,10 @@
 //System Includes
 #include <string.h>
 #include <thread>
+#include <memory>
+#include <termios.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 //Ours
 #include "UdpServer.h"
@@ -29,6 +33,9 @@ class hostReceiver
 {
 public:
 	
+	//Bluetooth constructor
+	hostReceiver();
+	//UDP constructor
 	hostReceiver(std::string ipAddrHost);
 
 
@@ -37,6 +44,9 @@ public:
 	//Threads that monintor reads and writes from network interfaces
 	int readThread();
 	int writeThread();
+
+	/** Function that reads data from the other device */
+	ssize_t receiveData();
 
 	//Thread the monitors the states of the buttons to issue commands
 	int buttonThread();
@@ -56,6 +66,10 @@ public:
 private:
 	//Simple bool to show if object is running
 	bool isRunning;
+	bool useBluetooth;
+	bool useUDP;
+
+	int fd; //file descriptor for bluetooth serial
 
 	//Enum to describe what state the program is reading from the host
 	enum HOST_STATES_t commandedState;

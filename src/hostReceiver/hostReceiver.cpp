@@ -10,14 +10,71 @@
 
 
 
-/** Default Constructor
+/** Bluetooth interface Constructor
+
+ */
+hostReceiver::hostReceiver()
+	: commandedState(STANDBY),
+	hostState(STANDBY),
+	isRunning(true),
+	useBluetooth(true),
+	useUDP(false)
+{
+	printf("Bluetooth!\n"); 
+	struct termios  config;
+
+	const char *device = "/dev/rfcomm0";
+	this->fd = open(device, (O_RDWR | O_NOCTTY | O_NDELAY) & ~(O_NONBLOCK));
+	if(this->fd == -1) {
+		printf( "failed to open port\n" );
+		return;
+	}
+
+	//Check if the serial port is a tty device
+	if(!isatty(this->fd))
+	{ 
+		printf("Error, invalid serial device\n"); 
+	}
+
+	if(tcgetattr(this->fd, &config) < 0) 
+	{ 
+		printf("Error reading config from serial device\n"); 
+	}
+
+	config.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |INLCR | PARMRK | INPCK | ISTRIP | IXON);
+	config.c_oflag = 0;
+	config.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
+	config.c_cflag &= ~(CSIZE | PARENB);
+	config.c_cflag |= CS8;
+	config.c_cc[VMIN]  = 10; //Miniumum size of 10 bytes to return from read
+	config.c_cc[VTIME] = 0; //return from read after 100 microseconds
+
+	//Set the read and write speeds
+	if(cfsetispeed(&config, B115200) < 0 || cfsetospeed(&config, B115200) < 0) 
+	{
+		printf("Error setting termios speed\n");
+	}
+
+	//Apply the settings we have made
+	if(tcsetattr(this->fd, TCSAFLUSH, &config) < 0) 
+	{
+		printf("Error setting termios attributes\n");
+	}
+	this->readThread_h = std::thread(&hostReceiver::readThread, this);
+	this->writeThread_h = std::thread(&hostReceiver::writeThread, this);	
+}
+
+/** UDP communication interface Constructor
 
  */
 hostReceiver::hostReceiver(std::string ipAddr)
 	: commandedState(STANDBY),
 	hostState(STANDBY),
-	isRunning(true)
+	isRunning(true),
+	useBluetooth(false),
+	useUDP(true)
 {
+	printf("Network!\n"); 
 	//Port to read from the headless machine
 	int portRemote = 200;
 	int portHost = 201;
@@ -38,8 +95,27 @@ hostReceiver::hostReceiver(std::string ipAddr)
  */
 hostReceiver::~hostReceiver()
 {
+	this->isRunning = false;
+	if(this->readThread_h.joinable())
+		this->readThread_h.join();
+	if(this->writeThread_h.joinable())
+		this->writeThread_h.join();
 
+}
 
+/** Function that reads data from the other device
+
+ */
+ssize_t hostReceiver::receiveData()
+{
+	if (this->useBluetooth)
+	{
+		return read(this->fd, reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
+	}
+	else if(this->useUDP)
+	{
+		return server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
+	}
 }
 
 /** Function that manages the UDP responses from the host and updates the LED's accordingly
@@ -50,21 +126,19 @@ int hostReceiver::readThread()
 
 	while(this->isRunning)
 	{
-		//Read the data in from the UDP interface
+		//Read the data in from the comminication interface
 
-		if (server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf)) > 0)
+		if (this->receiveData())
 		{
 			this->onMessageReceived();
 
 			//Trigger to start recording
 			if(this->commandedState == RECORDING && this->hostState == STANDBY)
 			{
-				std::cout<<"Start recording\n";
 				this->startRecording();
 			}
 			else if (this->commandedState == STANDBY && this->hostState == RECORDING)
 			{
-				std::cout<<"Stop recording\n";
 				this->stopRecording();
 			}
 		}
@@ -83,7 +157,11 @@ int hostReceiver::writeThread()
 	while(this->isRunning)
 	{
 		this->createSendMessage();
-		this->server.send(reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
+
+		if(this->useBluetooth)
+			write(this->fd, reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
+		else if(this->useUDP)
+			this->server.send(reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
 
 		//Send a command message at 10Hz
 		usleep(100000);

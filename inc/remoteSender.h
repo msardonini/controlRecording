@@ -79,6 +79,10 @@ public:
 private:
 	//Simple bool to show if object is running
 	bool isRunning;
+	bool useBluetooth;
+	bool useUDP;
+
+	int fd;
 
 	//Enum to describe what state the program is reading from the host
 	enum REMOTE_STATES_t hostState;

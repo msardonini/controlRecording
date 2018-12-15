@@ -9,6 +9,7 @@
 //System
 #include<iostream>
 #include<vector>
+#include<memory>
 #include<unistd.h>
 
 //Packages
@@ -29,7 +30,8 @@ int main(int argc, char *argv[])
 {
     int c;
     char* hostIP = NULL;
-    while ((c = getopt (argc, argv, "i:h")) != -1)
+    bool useBluetooth = false;
+    while ((c = getopt (argc, argv, "i:hb")) != -1)
     {
         switch (c)
         {
@@ -48,6 +50,9 @@ int main(int argc, char *argv[])
                 print_usage();
                 return 0;
 
+            case 'b':
+                useBluetooth = true;
+                break;
             //Handle unknown Arguments
             case '?':
                 if (optopt == 'c')
@@ -78,9 +83,16 @@ int main(int argc, char *argv[])
     hostIPstring.append(hostIP);
 	remoteSender sender(hostIPstring);
 #elif HOST_RECEIVER
-    std::string remoteIPstring;
-    remoteIPstring.append(hostIP);
-    hostReceiver receiver(remoteIPstring);
+    hostReceiver* receiver;
+    if(useBluetooth)
+        receiver = new hostReceiver;
+        // receiver = std::make_unique<hostReceiver>();
+    else
+    {   
+        // std::string remoteIPstring(hostIP);
+        // // hostReceiver receiver(remoteIPstring);
+        // std::make_unique receiver(remoteIPstring);
+    }
 #endif
 
 	//Just sleep in main while the remoteSender operates

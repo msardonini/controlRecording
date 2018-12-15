@@ -6,6 +6,8 @@ Requires=systemd-modules-load.service
 User=root
 PIDFile=/var/run/hostReceiver.pid
 ExecStart=/home/msardonini/git/controlRecording/build/hostReceiver -i 10.10.10.215
+#ExecStart=/home/msardonini/Videos/record_on_boot.sh
+
 
 [Install]
 WantedBy=multi-user.target
