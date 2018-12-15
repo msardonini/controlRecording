@@ -79,19 +79,24 @@ int main(int argc, char *argv[])
     }
 
 #ifdef REMOTE_SENDER
-    std::string hostIPstring;
-    hostIPstring.append(hostIP);
-	remoteSender sender(hostIPstring);
+
+    remoteSender* receiver;
+    if(useBluetooth)
+        receiver = new remoteSender;
+    else
+    {
+        std::string remoteIPstring(hostIP);
+        receiver = new remoteSender(remoteIPstring);
+    }
 #elif HOST_RECEIVER
     hostReceiver* receiver;
     if(useBluetooth)
         receiver = new hostReceiver;
         // receiver = std::make_unique<hostReceiver>();
     else
-    {   
-        // std::string remoteIPstring(hostIP);
-        // // hostReceiver receiver(remoteIPstring);
-        // std::make_unique receiver(remoteIPstring);
+    {
+        std::string remoteIPstring(hostIP);
+        receiver = new hostReceiver(remoteIPstring);
     }
 #endif
 

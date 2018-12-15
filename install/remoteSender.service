@@ -1,11 +1,12 @@
 [Unit]
 Description=Starts Recording Programs
 Requires=systemd-modules-load.service
+After=rfcomm.service
 
 [Service]
 User=root
 PIDFile=/var/run/remoteSender.pid
-ExecStart=/home/pi/git/controlRecording/build/remoteSender -i 10.10.10.222
+ExecStart=/home/pi/git/controlRecording/build/remoteSender -b
 
 [Install]
 WantedBy=multi-user.target
