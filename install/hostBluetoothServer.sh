@@ -11,7 +11,7 @@ function do_for_SIGUSER1()
 {
 	#Send the SIGINT to the current process
 	echo $PID_RFCOMM_SERVER
-	kill -INT $PID_RFCOMM_SERVER
+	sudo kill -INT $PID_RFCOMM_SERVER
 	PID_RFCOMM_SERVER=0;
 }
 

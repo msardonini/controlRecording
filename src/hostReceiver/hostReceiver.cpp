@@ -53,8 +53,8 @@ hostReceiver::hostReceiver()
 	config.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
 	config.c_cflag &= ~(CSIZE | PARENB);
 	config.c_cflag |= CS8;
-	config.c_cc[VMIN]  = 10; //Miniumum size of 10 bytes to return from read
-	config.c_cc[VTIME] = 100; //return from read after 100 microseconds
+	config.c_cc[VMIN]  = 23; //Miniumum size of 10 bytes to return from read
+	config.c_cc[VTIME] = 0; //return from read after 100 microseconds
 
 	//Set the read and write speeds
 	if(cfsetispeed(&config, B115200) < 0 || cfsetospeed(&config, B115200) < 0) 
@@ -158,7 +158,6 @@ int hostReceiver::readThread()
 		//Check if we have received the heartbeat status message in a reasonable amount of time
 		if (abs(this->getTimeUsec() - previousTimeStamp_us) > 1e6)
 		{
-			std::cout<<"no data!" << std::endl;
 			//Check if this is the first time we have moved into the DISCONNECTED state
 			if (this->hostState != DISCONNECTED)
 				this->resetConnection();
