@@ -75,7 +75,8 @@ public:
 
 	int createSendMessage();
 
-	int onMessageReceived();
+	//Returns true if the message was parsed correctly
+	bool onMessageReceived();
 
 	//Functions to control IO with onboard LED lights
 	int LedControlThread(enum LED_COLORS_t);

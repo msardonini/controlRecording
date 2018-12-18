@@ -15,10 +15,11 @@
  */
 hostReceiver::hostReceiver()
 	: commandedState(STANDBY),
-	hostState(STANDBY),
 	isRunning(true),
 	useBluetooth(true),
-	useUDP(false)
+	useUDP(false),
+	needsReset(false),
+	hostState(DISCONNECTED)
 {
 	printf("Bluetooth!\n"); 
 	struct termios  config;
@@ -75,10 +76,11 @@ hostReceiver::hostReceiver()
  */
 hostReceiver::hostReceiver(std::string ipAddr)
 	: commandedState(STANDBY),
-	hostState(STANDBY),
 	isRunning(true),
 	useBluetooth(false),
-	useUDP(true)
+	useUDP(true),
+	needsReset(false),
+	hostState(DISCONNECTED)
 {
 	printf("Network!\n"); 
 	//Port to read from the headless machine
@@ -129,15 +131,17 @@ ssize_t hostReceiver::receiveData()
  */
 int hostReceiver::readThread()
 {
-
+	uint64_t previousTimeStamp_us;
 	while(this->isRunning)
 	{
 		//Read the data in from the comminication interface
 
 		ssize_t ret = this->receiveData();
-		if (ret)
+
+		//Parse this message, return true if succeeded
+		if(ret > 0 && this->onMessageReceived())
 		{
-			this->onMessageReceived();
+			previousTimeStamp_us = this->getTimeUsec();
 
 			//Trigger to start recording
 			if(this->commandedState == RECORDING && this->hostState == STANDBY)
@@ -149,6 +153,23 @@ int hostReceiver::readThread()
 				this->stopRecording();
 			}
 		}
+		std::cout<<"iteration! ret is " <<ret << std::endl;
+	
+		//Check if we have received the heartbeat status message in a reasonable amount of time
+		if (abs(this->getTimeUsec() - previousTimeStamp_us) > 1e6)
+		{
+			std::cout<<"no data!" << std::endl;
+			//Check if this is the first time we have moved into the DISCONNECTED state
+			if (this->hostState != DISCONNECTED)
+				this->resetConnection();
+
+			this->hostState = DISCONNECTED;
+		}
+		else if (this->hostState == DISCONNECTED)
+		{
+			this->hostState = STANDBY;
+		}
+
 		//Run at 10Hz
 		usleep(100000);
 	}
@@ -198,9 +219,7 @@ int hostReceiver::createSendMessage()
 	return 0;
 }
 
-
-//TODO, set the udpserver such that this function is called every time a UDP message is received
-int hostReceiver::onMessageReceived()
+bool hostReceiver::onMessageReceived()
 {
 	//Copy the buffer into the messge predefined message
 	memcpy(&this->rcvMessage, this->rcvbuf, sizeof(this->rcvMessage));
@@ -225,8 +244,9 @@ int hostReceiver::onMessageReceived()
 		{
 			this->commandedState = STANDBY;
 		}
+		return true;
 	}
-	return 0;
+	return false;
 }
 
 int hostReceiver::startRecording()
@@ -242,6 +262,31 @@ int hostReceiver::stopRecording()
 	this->hostState = STANDBY;
 }
 
+
+int hostReceiver::resetConnection()
+{
+	if(this->useBluetooth)
+		close(this->fd);
+
+	//Get the PID number of the process running the bluetooth server
+	char line[50];
+	FILE *cmd = popen("pidof -xs hostBluetoothServer.sh", "r");
+
+	fgets(line, 50, cmd);
+	pid_t pid = strtoul(line, NULL, 10);
+	pclose(cmd);
+
+	//Send the SIGUSER1, the custom signal meaning we need to restart the server
+	kill(pid, 10);
+
+	this->needsReset = true;
+	std::cout<<" resetting the connection " << std::endl;
+}
+
+bool hostReceiver::getNeedsReset()
+{
+	return this->needsReset;
+}
 
 
 uint64_t hostReceiver::getTimeUsec()

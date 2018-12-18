@@ -24,8 +24,13 @@ remoteSender::remoteSender()
 {
 	printf("Bluetooth!\n"); 
 	struct termios  config;
-	sleep(10);
+
 	const char *device = "/dev/rfcomm0";
+
+	struct stat buf;
+	while (stat(device, &buf))
+		sleep(1);
+
 	this->fd = open(device, (O_RDWR | O_NOCTTY | O_NDELAY | O_NONBLOCK));
 	if(this->fd == -1) {
 		printf( "failed to open port\n" );
@@ -166,8 +171,9 @@ int remoteSender::readThread()
 		//Read the data in from the UDP interface
 		if(this->receiveData() > 0)
 		{
-			previousTimeStamp_us = this->getTimeUsec();
-			this->onMessageReceived();
+			//Parse the message we read in. Update the timestamp if it was parsed correctly
+			if(this->onMessageReceived())
+				previousTimeStamp_us = this->getTimeUsec();
 		}
 
 		//Check if we have received the heartbeat status message in a reasonable amount of time
@@ -249,8 +255,8 @@ int remoteSender::createSendMessage()
 }
 
 
-//TODO, set the udpserver such that this function is called every time a UDP message is received
-int remoteSender::onMessageReceived()
+
+bool remoteSender::onMessageReceived()
 {
 	//Copy the buffer into the messge predefined message
 	memcpy(&this->rcvMessage, this->rcvbuf, sizeof(this->rcvMessage));
@@ -275,8 +281,9 @@ int remoteSender::onMessageReceived()
 		{
 			this->hostState = STANDBY;
 		}
+		return true;
 	}
-	return 0;
+	return false;
 }
 
 int remoteSender::buttonThread()

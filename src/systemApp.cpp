@@ -91,8 +91,24 @@ int main(int argc, char *argv[])
 #elif HOST_RECEIVER
     hostReceiver* receiver;
     if(useBluetooth)
+    {   
         receiver = new hostReceiver;
+
+        while(1)
+        {
+            //Check to see if the class needs to be reset
+            if(receiver->getNeedsReset())
+            {
+                delete receiver;
+                sleep(4);
+
+                receiver = new hostReceiver;
+            }
+
+            sleep(1);
+        }
         // receiver = std::make_unique<hostReceiver>();
+    }
     else
     {
         std::string remoteIPstring(hostIP);

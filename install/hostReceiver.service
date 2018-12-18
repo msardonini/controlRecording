@@ -1,6 +1,8 @@
 [Unit]
 Description=Starts Recording Programs
 Requires=systemd-modules-load.service
+Requires=bluetooth.service
+After=bluetoothServer.service
 
 [Service]
 User=root

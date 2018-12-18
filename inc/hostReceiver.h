@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
 
 //Ours
 #include "UdpServer.h"
@@ -26,7 +27,8 @@
 enum HOST_STATES_t
 {
 	STANDBY,
-	RECORDING
+	RECORDING,
+	DISCONNECTED
 };
 
 
@@ -54,21 +56,24 @@ public:
 
 	int createSendMessage();
 
-	int onMessageReceived();
+	bool onMessageReceived();
 
-
+	//Resets the bluetooth interface connection
+	int resetConnection();
 	int stopRecording();
 	int startRecording();
 
 	// Get the current time in microseconds
 	uint64_t getTimeUsec();
 
+	bool getNeedsReset();
 
 private:
 	//Simple bool to show if object is running
 	bool isRunning;
 	bool useBluetooth;
 	bool useUDP;
+	bool needsReset;
 
 	int fd; //file descriptor for bluetooth serial
 
