@@ -100,8 +100,8 @@ remoteSender::remoteSender(std::string ipAddr)
 	hostState(DISCONNECTED),
 	buttonState(DISCONNECTED),
 	isRunning(true),
-	useBluetooth(true),
-	useUDP(false)
+	useBluetooth(false),
+	useUDP(true)
 {
 	//Port to read from the headless machine
 	int portRemote = 200;
