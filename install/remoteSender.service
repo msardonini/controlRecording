@@ -6,7 +6,7 @@ After=rfcomm.service
 [Service]
 User=root
 PIDFile=/var/run/remoteSender.pid
-ExecStart=/home/pi/git/controlRecording/build/remoteSender -b
+ExecStart=/home/pi/git/controlRecording/build/remoteSender -i 10.42.0.1
 
 [Install]
 WantedBy=multi-user.target

@@ -153,7 +153,6 @@ int hostReceiver::readThread()
 				this->stopRecording();
 			}
 		}
-		std::cout<<"iteration! ret is " <<ret << std::endl;
 	
 		//Check if we have received the heartbeat status message in a reasonable amount of time
 		if (abs(this->getTimeUsec() - previousTimeStamp_us) > 1e6)

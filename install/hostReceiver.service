@@ -7,7 +7,7 @@ After=bluetoothServer.service
 [Service]
 User=root
 PIDFile=/var/run/hostReceiver.pid
-ExecStart=/home/msardonini/git/controlRecording/build/hostReceiver -b
+ExecStart=/home/msardonini/git/controlRecording/build/hostReceiver -i 10.42.0.129
 #ExecStart=/home/msardonini/Videos/record_on_boot.sh
 
 
