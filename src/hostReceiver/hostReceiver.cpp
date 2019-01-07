@@ -263,22 +263,26 @@ int hostReceiver::stopRecording()
 
 int hostReceiver::resetConnection()
 {
+	//We only need to reset the connection when talking over bluetooth
 	if(this->useBluetooth)
+	{
 		close(this->fd);
 
-	//Get the PID number of the process running the bluetooth server
-	char line[50];
-	FILE *cmd = popen("pidof -xs hostBluetoothServer.sh", "r");
+		//Get the PID number of the process running the bluetooth server
+		char line[50];
+		FILE *cmd = popen("pidof -xs hostBluetoothServer.sh", "r");
 
-	fgets(line, 50, cmd);
-	pid_t pid = strtoul(line, NULL, 10);
-	pclose(cmd);
+		fgets(line, 50, cmd);
+		pid_t pid = strtoul(line, NULL, 10);
+		pclose(cmd);
 
-	//Send the SIGUSER1, the custom signal meaning we need to restart the server
-	kill(pid, 10);
+		//Send the SIGUSER1, the custom signal meaning we need to restart the server
+		kill(pid, 10);
 
-	this->needsReset = true;
-	std::cout<<" resetting the connection " << std::endl;
+		this->needsReset = true;
+		std::cout<<" resetting the connection " << std::endl;
+	}
+	return 0;
 }
 
 bool hostReceiver::getNeedsReset()
