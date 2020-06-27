@@ -9,6 +9,7 @@
 //System
 #include<iostream>
 #include<vector>
+#include<memory>
 #include<unistd.h>
 
 //Packages
@@ -29,7 +30,8 @@ int main(int argc, char *argv[])
 {
     int c;
     char* hostIP = NULL;
-    while ((c = getopt (argc, argv, "i:h")) != -1)
+    bool useBluetooth = false;
+    while ((c = getopt (argc, argv, "i:hb")) != -1)
     {
         switch (c)
         {
@@ -48,6 +50,9 @@ int main(int argc, char *argv[])
                 print_usage();
                 return 0;
 
+            case 'b':
+                useBluetooth = true;
+                break;
             //Handle unknown Arguments
             case '?':
                 if (optopt == 'c')
@@ -74,13 +79,41 @@ int main(int argc, char *argv[])
     }
 
 #ifdef REMOTE_SENDER
-    std::string hostIPstring;
-    hostIPstring.append(hostIP);
-	remoteSender sender(hostIPstring);
+
+    remoteSender* receiver;
+    if(useBluetooth)
+        receiver = new remoteSender;
+    else
+    {
+        std::string remoteIPstring(hostIP);
+        receiver = new remoteSender(remoteIPstring);
+    }
 #elif HOST_RECEIVER
-    std::string remoteIPstring;
-    remoteIPstring.append(hostIP);
-    hostReceiver receiver(remoteIPstring);
+    hostReceiver* receiver;
+    if(useBluetooth)
+    {   
+        receiver = new hostReceiver;
+
+        while(1)
+        {
+            //Check to see if the class needs to be reset
+            if(receiver->getNeedsReset())
+            {
+                delete receiver;
+                sleep(4);
+
+                receiver = new hostReceiver;
+            }
+
+            sleep(1);
+        }
+        // receiver = std::make_unique<hostReceiver>();
+    }
+    else
+    {
+        std::string remoteIPstring(hostIP);
+        receiver = new hostReceiver(remoteIPstring);
+    }
 #endif
 
 	//Just sleep in main while the remoteSender operates

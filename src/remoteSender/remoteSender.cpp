@@ -10,15 +10,98 @@
 
 
 
-/** Default Constructor
+/** Bluetooth interface Constructor
+
+ */
+remoteSender::remoteSender()
+	: greenLedStatus(FLASHING),
+	redLedStatus(OFF),
+	hostState(DISCONNECTED),
+	buttonState(DISCONNECTED),
+	isRunning(true),
+	useBluetooth(true),
+	useUDP(false)
+{
+	printf("Bluetooth!\n"); 
+	struct termios  config;
+
+	const char *device = "/dev/rfcomm0";
+
+	struct stat buf;
+	while (stat(device, &buf))
+		sleep(1);
+
+	this->fd = open(device, (O_RDWR | O_NOCTTY | O_NDELAY | O_NONBLOCK));
+	if(this->fd == -1) {
+		printf( "failed to open port\n" );
+		return;
+	}
+
+	//Check if the serial port is a tty device
+	if(!isatty(this->fd))
+	{ 
+		printf("Error, invalid serial device\n"); 
+	}
+
+	if(tcgetattr(this->fd, &config) < 0) 
+	{ 
+		printf("Error reading config from serial device\n"); 
+	}
+
+	config.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |INLCR | PARMRK | INPCK | ISTRIP | IXON);
+	config.c_oflag = 0;
+	config.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
+	config.c_cflag &= ~(CSIZE | PARENB);
+	config.c_cflag |= CS8;
+	config.c_cc[VMIN]  = 10; //Miniumum size of 10 bytes to return from read
+	config.c_cc[VTIME] = 100; //return from read after 100 microseconds
+
+	//Set the read and write speeds
+	if(cfsetispeed(&config, B115200) < 0 || cfsetospeed(&config, B115200) < 0) 
+	{
+		printf("Error setting termios speed\n");
+	}
+
+	//Apply the settings we have made
+	if(tcsetattr(this->fd, TCSAFLUSH, &config) < 0) 
+	{
+		printf("Error setting termios attributes\n");
+	}
+
+	//Start the thread that handles our LEDs
+	this->redLedThread = std::thread(&remoteSender::LedControlThread, this, RED);
+	this->greenLedThread = std::thread(&remoteSender::LedControlThread, this, GREEN);
+
+	this->readThread_h = std::thread(&remoteSender::readThread, this);
+	this->writeThread_h = std::thread(&remoteSender::writeThread, this);
+	
+	//Button Thread
+	this->buttonThread_h = std::thread(&remoteSender::buttonThread, this);
+
+	//Initialize the GPIO pints for LEDs and Butons
+	wiringPiSetup();
+
+	//Inintialize the GREEN LED
+	pinMode(GPIO_GREEN_LED, OUTPUT);
+	pinMode(GPIO_GREEN_BUTTON, INPUT);
+  
+	//Inintialize the GREEN LED
+	pinMode(GPIO_RED_LED, OUTPUT);
+	pinMode(GPIO_RED_BUTTON, INPUT);
+
+}
+
+/** UDP communication interface Constructor
 
  */
 remoteSender::remoteSender(std::string ipAddr)
 	: greenLedStatus(FLASHING),
 	redLedStatus(OFF),
-	remoteState(DISCONNECTED),
 	hostState(DISCONNECTED),
-	isRunning(true)
+	buttonState(DISCONNECTED),
+	isRunning(true),
+	useBluetooth(false),
+	useUDP(true)
 {
 	//Port to read from the headless machine
 	int portRemote = 200;
@@ -61,6 +144,21 @@ remoteSender::~remoteSender()
 
 }
 
+/** Function that reads data from the other device
+
+ */
+ssize_t remoteSender::receiveData()
+{
+	if (this->useBluetooth)
+	{
+		return read(this->fd, reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
+	}
+	else if(this->useUDP)
+	{
+		return server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
+	}
+}
+
 /** Function that manages the UDP responses from the host and updates the LED's accordingly
 
  */
@@ -71,23 +169,25 @@ int remoteSender::readThread()
 	while(this->isRunning)
 	{
 		//Read the data in from the UDP interface
-		server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
-
-		previousTimeStamp_us = this->lastTimestampReceived_us;
-		this->onMessageReceived();
+		if(this->receiveData() > 0)
+		{
+			//Parse the message we read in. Update the timestamp if it was parsed correctly
+			if(this->onMessageReceived())
+				previousTimeStamp_us = this->getTimeUsec();
+		}
 
 		//Check if we have received the heartbeat status message in a reasonable amount of time
-		if (previousTimeStamp_us - this->lastTimestampReceived_us > 1e6)
+		if (abs(this->getTimeUsec() - previousTimeStamp_us) > 1e6)
 		{
-			this->remoteState = DISCONNECTED;
+			this->hostState = DISCONNECTED;
 		}
-		else if (this->remoteState == DISCONNECTED)
+		else if (this->hostState == DISCONNECTED)
 		{
-			this->remoteState = STANDBY;
+			this->hostState = STANDBY;
 		}
-
+		
 		// Update the LED status
-		switch(this->remoteState)
+		switch(this->hostState)
 		{
 			case DISCONNECTED:
 				this->setLedFlashing(GREEN);
@@ -117,7 +217,14 @@ int remoteSender::writeThread()
 	while(this->isRunning)
 	{
 		this->createSendMessage();
-		this->server.send(reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
+
+		if(this->useBluetooth)
+		{
+			ssize_t ret = write(this->fd, reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
+		
+		}
+		else if(this->useUDP)
+			this->server.send(reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
 
 		//Send a command message at 10Hz
 		usleep(100000);
@@ -135,10 +242,10 @@ int remoteSender::createSendMessage()
 	this->sndMessage.magicHeader2 = MAGIC_H2;
 	this->sndMessage.isCommandMsg = 1u;
 	this->sndMessage.isStatusMsg = 0u;
-	if (this->hostState == RECORDING)
-		this->sndMessage.mode = 1u;
+	if (this->buttonState == RECORDING)
+		this->sndMessage.mode = MODE_RECORDING;
 	else
-		this->sndMessage.mode = 0u;
+		this->sndMessage.mode = MODE_STANDBY;
 	this->sndMessage.magicFooter1 = MAGIC_F1;
 	this->sndMessage.magicFooter2 = MAGIC_F2;
 
@@ -148,8 +255,8 @@ int remoteSender::createSendMessage()
 }
 
 
-//TODO, set the udpserver such that this function is called every time a UDP message is received
-int remoteSender::onMessageReceived()
+
+bool remoteSender::onMessageReceived()
 {
 	//Copy the buffer into the messge predefined message
 	memcpy(&this->rcvMessage, this->rcvbuf, sizeof(this->rcvMessage));
@@ -168,18 +275,20 @@ int remoteSender::onMessageReceived()
 	
 		if(this->lastModeReceived == MODE_RECORDING)
 		{
-			this->remoteState = RECORDING;
+			this->hostState = RECORDING;
 		}
 		else if(this->lastModeReceived == MODE_STANDBY)
 		{
-			this->remoteState = STANDBY;
+			this->hostState = STANDBY;
 		}
+		return true;
 	}
-	return 0;
+	return false;
 }
 
 int remoteSender::buttonThread()
 {
+	bool firstIterationButton = true;
 
 	int redButtonState = 0;
 	int previousRedButtonState = 0;
@@ -190,22 +299,34 @@ int remoteSender::buttonThread()
 
 	while(this->isRunning)
 	{
-		previousGreenButtonState = greenButtonState; 
-		digitalRead(GPIO_GREEN_BUTTON);
+		if(firstIterationButton)
+			previousGreenButtonState = digitalRead(GPIO_GREEN_BUTTON); 
+		else
+			previousGreenButtonState = greenButtonState;
+		greenButtonState = digitalRead(GPIO_GREEN_BUTTON);
 
 		// Detect a green button push
 		if (greenButtonState != previousGreenButtonState)
 		{
-			this->hostState = STANDBY;
+			// std::cout << "green push detected \n";
+			this->buttonState = STANDBY;
 		}
 
-		previousRedButtonState = redButtonState; 
-		digitalRead(GPIO_RED_BUTTON);
+		if(firstIterationButton)
+		{			
+			previousRedButtonState = digitalRead(GPIO_RED_BUTTON);
+			firstIterationButton = false;
+		}
+		else
+			previousRedButtonState = redButtonState; 
+
+		redButtonState = digitalRead(GPIO_RED_BUTTON);
 		
 		// Detect a red button push
 		if (redButtonState != previousRedButtonState)
 		{
-			this->hostState = RECORDING;
+			std::cout << "red push detected \n";
+			this->buttonState = RECORDING;
 		}
 
 		//Run at 100hz to catch quick button pushes

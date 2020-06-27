@@ -12,6 +12,12 @@
 //System Includes
 #include <string.h>
 #include <thread>
+#include <memory>
+#include <termios.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
 
 //Ours
 #include "UdpServer.h"
@@ -21,7 +27,8 @@
 enum HOST_STATES_t
 {
 	STANDBY,
-	RECORDING
+	RECORDING,
+	DISCONNECTED
 };
 
 
@@ -29,6 +36,9 @@ class hostReceiver
 {
 public:
 	
+	//Bluetooth constructor
+	hostReceiver();
+	//UDP constructor
 	hostReceiver(std::string ipAddrHost);
 
 
@@ -38,24 +48,34 @@ public:
 	int readThread();
 	int writeThread();
 
+	/** Function that reads data from the other device */
+	ssize_t receiveData();
+
 	//Thread the monitors the states of the buttons to issue commands
 	int buttonThread();
 
 	int createSendMessage();
 
-	int onMessageReceived();
+	bool onMessageReceived();
 
-
+	//Resets the bluetooth interface connection
+	int resetConnection();
 	int stopRecording();
 	int startRecording();
 
 	// Get the current time in microseconds
 	uint64_t getTimeUsec();
 
+	bool getNeedsReset();
 
 private:
 	//Simple bool to show if object is running
 	bool isRunning;
+	bool useBluetooth;
+	bool useUDP;
+	bool needsReset;
+
+	int fd; //file descriptor for bluetooth serial
 
 	//Enum to describe what state the program is reading from the host
 	enum HOST_STATES_t commandedState;

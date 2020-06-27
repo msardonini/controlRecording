@@ -1,0 +1,12 @@
+[Unit]
+#Description=Starts the bluetooth server for other devices to connect to
+Requires=bluetooth.service
+After=bluetoothServer.service
+
+[Service]
+User=root
+PIDFile=/var/run/bluetoothServer.pid
+ExecStart=/home/msardonini/git/controlRecording/install/hostBluetoothServer.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -10,14 +10,79 @@
 
 
 
-/** Default Constructor
+/** Bluetooth interface Constructor
+
+ */
+hostReceiver::hostReceiver()
+	: commandedState(STANDBY),
+	isRunning(true),
+	useBluetooth(true),
+	useUDP(false),
+	needsReset(false),
+	hostState(DISCONNECTED)
+{
+	printf("Bluetooth!\n"); 
+	struct termios  config;
+
+	const char *device = "/dev/rfcomm0";
+
+   struct stat buf;
+    while (stat(device, &buf))
+    	sleep(1);
+
+
+	this->fd = open(device, (O_RDWR | O_NOCTTY | O_NDELAY | O_NONBLOCK));
+	if(this->fd == -1) {
+		printf( "failed to open port\n" );
+		return;
+	}
+
+	//Check if the serial port is a tty device
+	if(!isatty(this->fd))
+	{ 
+		printf("Error, invalid serial device\n"); 
+	}
+
+	if(tcgetattr(this->fd, &config) < 0) 
+	{ 
+		printf("Error reading config from serial device\n"); 
+	}
+
+	config.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |INLCR | PARMRK | INPCK | ISTRIP | IXON);
+	config.c_oflag = 0;
+	config.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
+	config.c_cflag &= ~(CSIZE | PARENB);
+	config.c_cflag |= CS8;
+	config.c_cc[VMIN]  = 23; //Miniumum size of 10 bytes to return from read
+	config.c_cc[VTIME] = 0; //return from read after 100 microseconds
+
+	//Set the read and write speeds
+	if(cfsetispeed(&config, B115200) < 0 || cfsetospeed(&config, B115200) < 0) 
+	{
+		printf("Error setting termios speed\n");
+	}
+
+	//Apply the settings we have made
+	if(tcsetattr(this->fd, TCSAFLUSH, &config) < 0) 
+	{
+		printf("Error setting termios attributes\n");
+	}
+	this->readThread_h = std::thread(&hostReceiver::readThread, this);
+	this->writeThread_h = std::thread(&hostReceiver::writeThread, this);	
+}
+
+/** UDP communication interface Constructor
 
  */
 hostReceiver::hostReceiver(std::string ipAddr)
 	: commandedState(STANDBY),
-	hostState(STANDBY),
-	isRunning(true)
+	isRunning(true),
+	useBluetooth(false),
+	useUDP(true),
+	needsReset(false),
+	hostState(DISCONNECTED)
 {
+	printf("Network!\n"); 
 	//Port to read from the headless machine
 	int portRemote = 200;
 	int portHost = 201;
@@ -38,8 +103,27 @@ hostReceiver::hostReceiver(std::string ipAddr)
  */
 hostReceiver::~hostReceiver()
 {
+	this->isRunning = false;
+	if(this->readThread_h.joinable())
+		this->readThread_h.join();
+	if(this->writeThread_h.joinable())
+		this->writeThread_h.join();
 
+}
 
+/** Function that reads data from the other device
+
+ */
+ssize_t hostReceiver::receiveData()
+{
+	if (this->useBluetooth)
+	{
+		return read(this->fd, reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
+	}
+	else if(this->useUDP)
+	{
+		return server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
+	}
 }
 
 /** Function that manages the UDP responses from the host and updates the LED's accordingly
@@ -47,22 +131,41 @@ hostReceiver::~hostReceiver()
  */
 int hostReceiver::readThread()
 {
-
+	uint64_t previousTimeStamp_us;
 	while(this->isRunning)
 	{
-		//Read the data in from the UDP interface
-		server.receiveUdp(reinterpret_cast<char*>(this->rcvbuf), sizeof(this->rcvbuf));
-		
-		this->onMessageReceived();
+		//Read the data in from the comminication interface
 
-		//Trigger to start recording
-		if(this->commandedState == RECORDING && this->hostState == STANDBY)
+		ssize_t ret = this->receiveData();
+
+		//Parse this message, return true if succeeded
+		if(ret > 0 && this->onMessageReceived())
 		{
-			this->startRecording();
+			previousTimeStamp_us = this->getTimeUsec();
+
+			//Trigger to start recording
+			if(this->commandedState == RECORDING && this->hostState == STANDBY)
+			{
+				this->startRecording();
+			}
+			else if (this->commandedState == STANDBY && this->hostState == RECORDING)
+			{
+				this->stopRecording();
+			}
 		}
-		else if (this->commandedState == STANDBY && this->hostState == RECORDING)
+	
+		//Check if we have received the heartbeat status message in a reasonable amount of time
+		if (abs(this->getTimeUsec() - previousTimeStamp_us) > 1e6)
 		{
-			this->stopRecording();
+			//Check if this is the first time we have moved into the DISCONNECTED state
+			if (this->hostState != DISCONNECTED)
+				this->resetConnection();
+
+			this->hostState = DISCONNECTED;
+		}
+		else if (this->hostState == DISCONNECTED)
+		{
+			this->hostState = STANDBY;
 		}
 
 		//Run at 10Hz
@@ -80,7 +183,11 @@ int hostReceiver::writeThread()
 	while(this->isRunning)
 	{
 		this->createSendMessage();
-		this->server.send(reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
+
+		if(this->useBluetooth)
+			write(this->fd, reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
+		else if(this->useUDP)
+			this->server.send(reinterpret_cast<char*>(this->sndbuf), sizeof(this->sndMessage));
 
 		//Send a command message at 10Hz
 		usleep(100000);
@@ -99,9 +206,9 @@ int hostReceiver::createSendMessage()
 	this->sndMessage.isCommandMsg = 0u;
 	this->sndMessage.isStatusMsg = 1u;
 	if (this->hostState == RECORDING)
-		this->sndMessage.mode = 1u;
+		this->sndMessage.mode = MODE_RECORDING;
 	else if (this->hostState == STANDBY)
-		this->sndMessage.mode = 0u;
+		this->sndMessage.mode = MODE_STANDBY;
 	this->sndMessage.magicFooter1 = MAGIC_F1;
 	this->sndMessage.magicFooter2 = MAGIC_F2;
 
@@ -110,9 +217,7 @@ int hostReceiver::createSendMessage()
 	return 0;
 }
 
-
-//TODO, set the udpserver such that this function is called every time a UDP message is received
-int hostReceiver::onMessageReceived()
+bool hostReceiver::onMessageReceived()
 {
 	//Copy the buffer into the messge predefined message
 	memcpy(&this->rcvMessage, this->rcvbuf, sizeof(this->rcvMessage));
@@ -137,23 +242,53 @@ int hostReceiver::onMessageReceived()
 		{
 			this->commandedState = STANDBY;
 		}
+		return true;
 	}
-	return 0;
+	return false;
 }
 
 int hostReceiver::startRecording()
 {
-	system("/home/msardonini/Videos/record_on_boot.sh");
+	system("/home/msardonini/Videos/record_on_boot.sh &");
 	this->hostState = RECORDING;
 }
 
 
 int hostReceiver::stopRecording()
 {
-	system("/home/msardonini/Videos/stopProgram.sh");
+	system("/home/msardonini/Videos/stopProgram.sh &");
 	this->hostState = STANDBY;
 }
 
+
+int hostReceiver::resetConnection()
+{
+	//We only need to reset the connection when talking over bluetooth
+	if(this->useBluetooth)
+	{
+		close(this->fd);
+
+		//Get the PID number of the process running the bluetooth server
+		char line[50];
+		FILE *cmd = popen("pidof -xs hostBluetoothServer.sh", "r");
+
+		fgets(line, 50, cmd);
+		pid_t pid = strtoul(line, NULL, 10);
+		pclose(cmd);
+
+		//Send the SIGUSER1, the custom signal meaning we need to restart the server
+		kill(pid, 10);
+
+		this->needsReset = true;
+		std::cout<<" resetting the connection " << std::endl;
+	}
+	return 0;
+}
+
+bool hostReceiver::getNeedsReset()
+{
+	return this->needsReset;
+}
 
 
 uint64_t hostReceiver::getTimeUsec()

@@ -12,6 +12,12 @@
 //System Includes
 #include <string.h>
 #include <thread>
+#include <termios.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/stat.h>
+
 
 //Packages
 #include <wiringPi.h>
@@ -49,11 +55,17 @@ enum LED_STATUS_t
 class remoteSender
 {
 public:
-	
+
+	//bluetooth interface constructor
+	remoteSender();
+
+	//UDP interface constructor
 	remoteSender(std::string ipAddrHost);
 
 
 	~remoteSender();
+
+	ssize_t receiveData();
 
 	//Threads that monintor reads and writes from network interfaces
 	int readThread();
@@ -64,7 +76,8 @@ public:
 
 	int createSendMessage();
 
-	int onMessageReceived();
+	//Returns true if the message was parsed correctly
+	bool onMessageReceived();
 
 	//Functions to control IO with onboard LED lights
 	int LedControlThread(enum LED_COLORS_t);
@@ -79,12 +92,16 @@ public:
 private:
 	//Simple bool to show if object is running
 	bool isRunning;
+	bool useBluetooth;
+	bool useUDP;
+
+	int fd;
 
 	//Enum to describe what state the program is reading from the host
-	enum REMOTE_STATES_t remoteState;
+	enum REMOTE_STATES_t hostState;
 
 	//Enum to describe what state the program is commanding to the Host
-	enum REMOTE_STATES_t hostState;
+	enum REMOTE_STATES_t buttonState;
 
 	//threads to handle the incoming and outgoing of messages
 	std::thread readThread_h;
