@@ -194,7 +194,7 @@ int remoteSender::buttonThread()
 		digitalRead(GPIO_GREEN_BUTTON);
 
 		// Detect a green button push
-		if (greenButtonState > previousGreenButtonState)
+		if (greenButtonState != previousGreenButtonState)
 		{
 			this->hostState = STANDBY;
 		}
@@ -203,7 +203,7 @@ int remoteSender::buttonThread()
 		digitalRead(GPIO_RED_BUTTON);
 		
 		// Detect a red button push
-		if (redButtonState > previousRedButtonState)
+		if (redButtonState != previousRedButtonState)
 		{
 			this->hostState = RECORDING;
 		}
